@@ -1,3 +1,2 @@
-# MinGW's dlltool doesn't handle paths with spaces. Build under a no-space path.
 [build]
-target-dir = "C:/d2r-rc-target"
+target-dir = "target"
