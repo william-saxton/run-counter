@@ -1,5 +1,6 @@
 import { writable } from "svelte/store";
 import { DEFAULT_HOTKEYS, type Profile, type Settings } from "../types";
+import { emitEvent, isTauri, listenEvent } from "../api";
 
 function defaultProfile(): Profile {
   return {
@@ -50,16 +51,55 @@ function load(): Settings {
 
 const _store = writable<Settings>(load());
 
+// Owner = the window that mutates settings (the main window). Other windows
+// (the overlay) call setReadOnly() so they don't write to disk or re-broadcast
+// the snapshots they receive.
+let isOwner = true;
+let suppress = false;
+// Skip the first subscribe invocation: Svelte fires it synchronously at
+// registration with the loaded value, but at that point the overlay window
+// hasn't had a chance to call setReadOnly() yet — so it would broadcast its
+// stale loaded state and clobber the main window's fresh settings.
+let initialized = false;
+
 _store.subscribe((s) => {
+  if (!initialized) {
+    initialized = true;
+    return;
+  }
+  if (suppress) return;
+  if (!isOwner) return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
   } catch {}
+  if (isTauri()) {
+    emitEvent("settings:updated", s).catch(() => {});
+  }
 });
 
 export const settings = {
   subscribe: _store.subscribe,
   set: _store.set,
   update: _store.update,
+
+  /** Mark this store instance as a read-only mirror (overlay window). */
+  setReadOnly() {
+    isOwner = false;
+  },
+
+  /** Apply a remote snapshot without re-broadcasting it. */
+  applyRemote(snapshot: Settings) {
+    suppress = true;
+    _store.set(snapshot);
+    suppress = false;
+  },
+
+  /** Subscribe to cross-window settings updates (overlay calls this). */
+  async subscribeRemote(): Promise<() => void> {
+    return listenEvent<Settings>("settings:updated", (s) => {
+      if (s) this.applyRemote(s);
+    });
+  },
 };
 
 /* ---------- Profile helpers ---------- */

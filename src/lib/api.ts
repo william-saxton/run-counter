@@ -20,6 +20,7 @@ type DropEvent =
   | "hotkey:toggle_overlay"
   | "session:updated"
   | "session:tick"
+  | "settings:updated"
   | "game:focus";
 
 export async function listenEvent<T = unknown>(

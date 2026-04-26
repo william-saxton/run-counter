@@ -7,6 +7,7 @@
 
   let unsubRemote: (() => void) | null = null;
   let unsubTicks: (() => void) | null = null;
+  let unsubSettings: (() => void) | null = null;
 
   // Mirror the main window's profile selection.
   $: setActiveProfileId($settings.active_profile_id);
@@ -16,16 +17,20 @@
       session.seedDemo();
       return;
     }
-    // Read-only mirror — main window is the source of truth.
+    // Read-only mirror — main window is the source of truth for both
+    // session state and settings (lock, opacity, hotkey hints, …).
     session.setReadOnly();
+    settings.setReadOnly();
     await session.restoreLast();
     unsubRemote = await session.subscribeRemote();
     unsubTicks = await session.subscribeTicks();
+    unsubSettings = await settings.subscribeRemote();
   });
 
   onDestroy(() => {
     unsubRemote?.();
     unsubTicks?.();
+    unsubSettings?.();
   });
 </script>
 
