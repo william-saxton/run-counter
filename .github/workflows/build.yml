@@ -58,19 +58,22 @@ jobs:
       - name: Type-check frontend
         run: npm run check
 
-      - name: Build frontend
-        run: npm run build
+      - name: Build Tauri binary (no installer)
+        run: npm run tauri -- build --no-bundle
 
-      - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
-        with:
-          args: --ci
+      - name: Stage binary for upload
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          if [ "${{ matrix.platform }}" = "windows-latest" ]; then
+            cp src-tauri/target/release/d2r-run-counter.exe artifacts/
+          else
+            cp src-tauri/target/release/d2r-run-counter artifacts/
+          fi
 
-      - name: Upload build artifacts
+      - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: tauri-build-${{ matrix.platform }}
-          path: |
-            src-tauri/target/release/bundle/**/*
-            dist/**/*
-          if-no-files-found: ignore
+          name: d2r-run-counter-${{ matrix.platform }}
+          path: artifacts/*
+          if-no-files-found: error

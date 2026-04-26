@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: "Tag name for the release (e.g. v0.1.0). Leave blank to derive from package.json."
+        description: "Tag name for the release (e.g. v0.1.0). Leave blank to derive from package.json + commit sha."
         required: false
         type: string
       prerelease:
@@ -19,7 +19,7 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  build:
     strategy:
       fail-fast: false
       matrix:
@@ -67,6 +67,42 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Build Tauri binary (no installer)
+        run: npm run tauri -- build --no-bundle
+
+      - name: Stage binary for release
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          case "${{ matrix.platform }}" in
+            windows-latest)
+              cp src-tauri/target/release/d2r-run-counter.exe artifacts/d2r-run-counter-windows-x86_64.exe
+              ;;
+            macos-latest)
+              cp src-tauri/target/release/d2r-run-counter artifacts/d2r-run-counter-macos
+              chmod +x artifacts/d2r-run-counter-macos
+              ;;
+            ubuntu-latest)
+              cp src-tauri/target/release/d2r-run-counter artifacts/d2r-run-counter-linux-x86_64
+              chmod +x artifacts/d2r-run-counter-linux-x86_64
+              ;;
+          esac
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: d2r-run-counter-${{ matrix.platform }}
+          path: artifacts/*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Resolve release tag
         id: resolve_tag
         shell: bash
@@ -80,7 +116,6 @@ jobs:
             tag="v${pkg_version}-$(echo ${{ github.sha }} | cut -c1-7)"
           fi
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          echo "Resolved release tag: ${tag}"
 
       - name: Resolve prerelease flag
         id: resolve_prerelease
@@ -92,15 +127,25 @@ jobs:
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build and publish Tauri release
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
         with:
-          tagName: ${{ steps.resolve_tag.outputs.tag }}
-          releaseName: "D2R Run Counter ${{ steps.resolve_tag.outputs.tag }}"
-          releaseBody: |
+          path: release-assets
+          merge-multiple: true
+
+      - name: List release assets
+        run: ls -la release-assets
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.resolve_tag.outputs.tag }}
+          name: "D2R Run Counter ${{ steps.resolve_tag.outputs.tag }}"
+          body: |
             Automated release built from `${{ github.sha }}`.
             Triggered by: `${{ github.event_name }}`.
-          releaseDraft: false
+
+            Standalone binaries — no installer required. Download the file for your platform and run it directly.
           prerelease: ${{ steps.resolve_prerelease.outputs.prerelease }}
+          files: release-assets/*
+          fail_on_unmatched_files: true
