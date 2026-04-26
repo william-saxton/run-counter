@@ -31,14 +31,6 @@
   let dropOpen = false;
   let unlisteners: Array<() => void> = [];
 
-  // Visible debug — flashes a small badge whenever a hotkey event reaches
-  // the frontend. Useful to diagnose whether the IPC path is healthy without
-  // popping devtools.
-  /** Tracks whether the active run was paused by the auto-focus watcher
-   *  (so we know it's safe to auto-resume when focus returns). User-driven
-   *  pauses don't set this, so they survive focus changes. */
-  let autoPaused = false;
-
   function onChangeTab(id: string) {
     active = id;
   }
@@ -140,17 +132,14 @@
       }),
       await listenEvent<boolean>("game:focus", (focused) => {
         if (!$settings.auto_pause_on_focus_loss) return;
-        const run = $activeRun;
-        if (!run) return;
-        if (!focused && run.status === "active") {
-          autoPaused = true;
-          sessionApi.togglePause();
-        } else if (focused && run.status === "paused" && autoPaused) {
-          autoPaused = false;
-          sessionApi.togglePause();
-        } else if (focused) {
-          // User manually paused or resumed; clear our marker.
-          autoPaused = false;
+        if (!$session.session) return;
+        // The session store tracks whether the current pause was auto-owned;
+        // autoResume() is a no-op for manually-paused runs, and autoPause()
+        // is a no-op if the run isn't actively running.
+        if (focused) {
+          sessionApi.autoResume();
+        } else {
+          sessionApi.autoPause();
         }
       })
     );
