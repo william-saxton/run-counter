@@ -1,0 +1,102 @@
+/* D2R Run Counter — design tokens (ported from design package) */
+:root {
+  /* Surfaces */
+  --bg-0: #0e0f12;
+  --bg-1: #14161b;
+  --bg-2: #1a1b20;
+  --bg-3: #20222a;
+  --bg-4: #262932;
+
+  /* Borders */
+  --line: #2a2c33;
+  --line-soft: #22242b;
+  --line-strong: #353842;
+
+  /* Text */
+  --fg: #e6e8ee;
+  --fg-1: #c7cad1;
+  --fg-2: #7a7e88;
+  --fg-3: #565963;
+
+  /* Accent — muted gold */
+  --accent: #e0b568;
+  --accent-2: #c99a4f;
+  --accent-glow: rgba(224, 181, 104, 0.16);
+
+  /* Status */
+  --ok: #7fb489;
+  --warn: #d9a05b;
+  --danger: #c97064;
+
+  /* Radii */
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+
+  /* Type */
+  --font-ui: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Consolas", ui-monospace, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: #0a0a0c;
+  color: var(--fg-1);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  min-height: 100vh;
+}
+
+/* Overlay window has a transparent background so the frameless Tauri window shows nothing behind it */
+body.overlay-body {
+  background: transparent;
+  overflow: hidden;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  letter-spacing: -0.01em;
+}
+
+.scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll::-webkit-scrollbar-thumb {
+  background: #2a2c33;
+  border-radius: 8px;
+}
+.scroll::-webkit-scrollbar-thumb:hover {
+  background: #353842;
+}
+
+@keyframes blink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  50.01%,
+  100% {
+    opacity: 0;
+  }
+}

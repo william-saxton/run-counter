@@ -1,0 +1,54 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "D2R Run Counter",
+  "version": "0.1.0",
+  "identifier": "com.d2rrc.app",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "D2R Run Counter",
+        "width": 900,
+        "height": 600,
+        "minWidth": 800,
+        "minHeight": 500,
+        "url": "index.html",
+        "decorations": true
+      },
+      {
+        "label": "overlay",
+        "title": "D2R Overlay",
+        "width": 320,
+        "height": 96,
+        "minWidth": 220,
+        "minHeight": 64,
+        "url": "overlay.html",
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": true,
+        "shadow": false,
+        "x": 24,
+        "y": 24
+      }
+    ],
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": false,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {}
+}

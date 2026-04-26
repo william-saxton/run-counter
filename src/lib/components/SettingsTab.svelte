@@ -1,0 +1,524 @@
+<script lang="ts">
+  import Btn from "./Btn.svelte";
+  import Card from "./Card.svelte";
+  import Chip from "./Chip.svelte";
+  import HotkeyRow from "./HotkeyRow.svelte";
+  import Icon from "./Icon.svelte";
+  import SectionLabel from "./SectionLabel.svelte";
+  import {
+    settings,
+    addProfile,
+    removeProfile,
+    renameProfile,
+    setActiveProfile,
+  } from "../stores/settings";
+  import type { HotkeyBindings, Profile } from "../types";
+  import { persistence } from "../api";
+
+  type HKKey = keyof HotkeyBindings;
+
+  let capturing: HKKey | null = null;
+
+  const hkRows: { id: HKKey; label: string; desc: string }[] = [
+    { id: "next_run", label: "Next run", desc: "Stops the current run, starts a new one" },
+    { id: "toggle_pause", label: "Pause / Resume", desc: "Toggles the run timer" },
+    { id: "log_drop", label: "Log a drop", desc: "Opens the quick drop logger" },
+    { id: "toggle_overlay", label: "Toggle overlay", desc: "Show or hide the floating widget" },
+  ];
+
+  function startCapture(id: HKKey) {
+    capturing = id;
+  }
+
+  function captureKey(e: KeyboardEvent) {
+    if (!capturing) return;
+    e.preventDefault();
+    if (e.key === "Escape") {
+      capturing = null;
+      return;
+    }
+    const parts: string[] = [];
+    if (e.ctrlKey) parts.push("Ctrl");
+    if (e.altKey) parts.push("Alt");
+    if (e.shiftKey) parts.push("Shift");
+    if (e.metaKey) parts.push("Meta");
+    const k = e.key;
+    if (!["Control", "Alt", "Shift", "Meta"].includes(k)) {
+      parts.push(k.length === 1 ? k.toUpperCase() : k);
+      const chord = parts.join("+");
+      const id = capturing;
+      settings.update((s) => ({ ...s, hotkeys: { ...s.hotkeys, [id]: chord } }));
+      capturing = null;
+    }
+  }
+
+  function removeLabel(label: string) {
+    settings.update((s) => ({ ...s, saved_labels: s.saved_labels.filter((l) => l !== label) }));
+  }
+  function addLabel() {
+    const v = prompt("New label name");
+    if (!v) return;
+    settings.update((s) =>
+      s.saved_labels.includes(v) ? s : { ...s, saved_labels: [...s.saved_labels, v] }
+    );
+  }
+
+  function setOpacity(e: Event) {
+    const v = Number((e.target as HTMLInputElement).value);
+    settings.update((s) => ({ ...s, overlay_opacity: v }));
+  }
+
+  /* ---------- Profile actions ---------- */
+
+  function onAddProfile() {
+    const name = prompt("New character/profile name");
+    if (!name) return;
+    const p = addProfile(name.trim());
+    setActiveProfile(p.id);
+  }
+
+  function onRenameProfile(p: Profile) {
+    const name = prompt("Rename profile", p.name);
+    if (!name) return;
+    renameProfile(p.id, name.trim());
+  }
+
+  async function onDeleteProfile(p: Profile) {
+    if ($settings.profiles.length <= 1) {
+      alert("Can't delete the last profile.");
+      return;
+    }
+    const ok = confirm(
+      `Delete profile "${p.name}" and all its run history? This can't be undone.`
+    );
+    if (!ok) return;
+    await persistence.clearProfile(p.id);
+    removeProfile(p.id);
+  }
+
+  async function onClearActiveProfile() {
+    const ok = confirm(
+      `Clear all run history for the active profile? This won't delete the profile itself.`
+    );
+    if (!ok) return;
+    await persistence.clearProfile($settings.active_profile_id);
+    location.reload();
+  }
+</script>
+
+<svelte:window on:keydown={captureKey} />
+
+<div class="root scroll">
+  <div class="col">
+    <Card padding={18}>
+      <SectionLabel>
+        Profiles
+        <button slot="right" class="add-link" on:click={onAddProfile}>
+          <Icon name="plus" size={11} stroke="var(--accent)" /> Add profile
+        </button>
+      </SectionLabel>
+      <div class="profile-list">
+        {#each $settings.profiles as p (p.id)}
+          <div class="profile-row" class:active={p.id === $settings.active_profile_id}>
+            <button class="profile-pick" on:click={() => setActiveProfile(p.id)}>
+              <span class="dot" class:active={p.id === $settings.active_profile_id} />
+              <span class="name">{p.name}</span>
+              {#if p.id === $settings.active_profile_id}
+                <span class="active-tag">Active</span>
+              {/if}
+            </button>
+            <div class="profile-actions">
+              <button class="icon-btn" title="Rename" on:click={() => onRenameProfile(p)}>
+                <Icon name="edit" size={12} stroke="var(--fg-3)" />
+              </button>
+              <button
+                class="icon-btn"
+                title="Delete"
+                disabled={$settings.profiles.length <= 1}
+                on:click={() => onDeleteProfile(p)}
+              >
+                <Icon name="trash" size={12} stroke="var(--fg-3)" />
+              </button>
+            </div>
+          </div>
+        {/each}
+      </div>
+    </Card>
+
+    <Card padding={18}>
+      <SectionLabel>
+        Hotkeys
+        <span slot="right" class="meta">Global · works in-game</span>
+      </SectionLabel>
+      {#each hkRows as row}
+        <HotkeyRow
+          label={row.label}
+          desc={row.desc}
+          chord={$settings.hotkeys[row.id]}
+          capturing={capturing === row.id}
+          onClick={() => startCapture(row.id)}
+        />
+      {/each}
+    </Card>
+
+    <Card padding={18}>
+      <SectionLabel>
+        Saved labels
+        <button slot="right" class="add-link" on:click={addLabel}>
+          <Icon name="plus" size={11} stroke="var(--accent)" /> Add label
+        </button>
+      </SectionLabel>
+      <div class="chip-grid">
+        {#each $settings.saved_labels as l}
+          <Chip removable on:click={() => removeLabel(l)}>{l}</Chip>
+        {/each}
+      </div>
+    </Card>
+
+    <Card padding={18}>
+      <SectionLabel>Overlay</SectionLabel>
+      <div class="opacity-row">
+        <div class="op-head">
+          <span class="opt-label">Opacity</span>
+          <span class="spacer" />
+          <span class="num op-val">{$settings.overlay_opacity}%</span>
+        </div>
+        <input
+          type="range"
+          min="40"
+          max="100"
+          value={$settings.overlay_opacity}
+          on:input={setOpacity}
+          class="slider"
+        />
+      </div>
+
+      <div class="toggle-row">
+        <div class="left">
+          <span class="opt-label">Lock position</span>
+          <span class="opt-desc">Prevent accidental dragging during play</span>
+        </div>
+        <button
+          class="toggle"
+          class:on={$settings.overlay_lock}
+          on:click={() => settings.update((s) => ({ ...s, overlay_lock: !s.overlay_lock }))}
+        >
+          <span class="knob" />
+        </button>
+      </div>
+
+      <div class="toggle-row">
+        <div class="left">
+          <span class="opt-label">Always on top</span>
+          <span class="opt-desc">Keep overlay above the game window</span>
+        </div>
+        <button
+          class="toggle"
+          class:on={$settings.overlay_always_on_top}
+          on:click={() =>
+            settings.update((s) => ({ ...s, overlay_always_on_top: !s.overlay_always_on_top }))}
+        >
+          <span class="knob" />
+        </button>
+      </div>
+    </Card>
+
+    <Card padding={18}>
+      <SectionLabel>Data</SectionLabel>
+      <div class="toggle-row">
+        <div class="left">
+          <span class="opt-label">Resume last session on launch</span>
+          <span class="opt-desc">Restore the most recent unfinished session</span>
+        </div>
+        <button
+          class="toggle"
+          class:on={$settings.resume_on_launch}
+          on:click={() =>
+            settings.update((s) => ({ ...s, resume_on_launch: !s.resume_on_launch }))}
+        >
+          <span class="knob" />
+        </button>
+      </div>
+      <div class="toggle-row">
+        <div class="left">
+          <span class="opt-label">Auto-detect game window</span>
+          <span class="opt-desc">Pause timer when the game loses focus, resume when it regains focus</span>
+        </div>
+        <button
+          class="toggle"
+          class:on={$settings.auto_pause_on_focus_loss}
+          on:click={() =>
+            settings.update((s) => ({
+              ...s,
+              auto_pause_on_focus_loss: !s.auto_pause_on_focus_loss,
+            }))}
+        >
+          <span class="knob" />
+        </button>
+      </div>
+      {#if $settings.auto_pause_on_focus_loss}
+        <div class="text-row">
+          <div class="left">
+            <span class="opt-label">Game process name</span>
+            <span class="opt-desc">Executable name of the game to track (case-insensitive)</span>
+          </div>
+          <input
+            class="text-input num"
+            type="text"
+            bind:value={$settings.game_process_name}
+            placeholder="D2R.exe"
+          />
+        </div>
+      {/if}
+      <div class="export-row">
+        <div class="left">
+          <span class="opt-label">Export all data</span>
+          <span class="opt-desc">Sessions, runs, drops as a single JSON file</span>
+        </div>
+        <Btn icon="download">Export</Btn>
+      </div>
+      <div class="toggle-row danger">
+        <div class="left">
+          <span class="opt-label danger">Clear history</span>
+          <span class="opt-desc">Permanently deletes all sessions and run data for the active profile</span>
+        </div>
+        <Btn icon="trash" danger on:click={onClearActiveProfile}>Clear…</Btn>
+      </div>
+    </Card>
+    <div class="bottom-pad" />
+  </div>
+</div>
+
+<style>
+  .root {
+    flex: 1;
+    min-height: 0;
+    padding: 24px;
+    overflow: auto;
+  }
+  .col {
+    max-width: 640px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .meta {
+    font-size: 10px;
+    color: var(--fg-3);
+  }
+  .add-link {
+    all: unset;
+    cursor: pointer;
+    font-size: 11px;
+    color: var(--accent);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .chip-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .opacity-row {
+    padding: 12px 4px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .op-head {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .op-val {
+    font-size: 12px;
+    color: var(--accent);
+  }
+  .spacer {
+    flex: 1;
+  }
+  .opt-label {
+    font-size: 13px;
+    color: var(--fg-1);
+  }
+  .opt-label.danger {
+    color: var(--danger);
+  }
+  .opt-desc {
+    font-size: 11px;
+    color: var(--fg-3);
+  }
+  .slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    background: var(--bg-0);
+    border-radius: 2px;
+    border: 1px solid var(--line-soft);
+    outline: none;
+    cursor: pointer;
+  }
+  .slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    background: var(--accent);
+    box-shadow: 0 0 10px rgba(224, 181, 104, 0.5);
+    cursor: grab;
+    border: 0;
+  }
+  .slider::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    background: var(--accent);
+    box-shadow: 0 0 10px rgba(224, 181, 104, 0.5);
+    border: 0;
+    cursor: grab;
+  }
+  .toggle-row,
+  .export-row,
+  .text-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 4px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .toggle-row .left,
+  .export-row .left,
+  .text-row .left {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .text-input {
+    width: 160px;
+    padding: 7px 10px;
+    background: var(--bg-0);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    color: var(--fg);
+    font-size: 12px;
+    outline: none;
+  }
+  .text-input:focus {
+    border-color: var(--accent);
+  }
+  .toggle {
+    all: unset;
+    width: 32px;
+    height: 18px;
+    border-radius: 999px;
+    background: var(--bg-3);
+    border: 1px solid var(--line);
+    position: relative;
+    cursor: pointer;
+    transition: background 160ms, border-color 160ms;
+  }
+  .toggle.on {
+    background: var(--accent);
+    border-color: var(--accent-2);
+  }
+  .knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 999px;
+    background: #9da0a8;
+    transition: left 160ms, background 160ms;
+  }
+  .toggle.on .knob {
+    left: 16px;
+    background: #1a1206;
+  }
+  .bottom-pad {
+    height: 8px;
+  }
+
+  /* Profiles */
+  .profile-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .profile-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px 6px 4px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+  }
+  .profile-row:hover {
+    background: var(--bg-3);
+  }
+  .profile-row.active {
+    border-color: rgba(224, 181, 104, 0.25);
+    background: var(--accent-glow);
+  }
+  .profile-pick {
+    all: unset;
+    flex: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: 6px;
+  }
+  .profile-pick .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--bg-3);
+    border: 1px solid var(--line);
+    flex-shrink: 0;
+  }
+  .profile-pick .dot.active {
+    background: var(--accent);
+    border-color: var(--accent-2);
+    box-shadow: 0 0 8px rgba(224, 181, 104, 0.6);
+  }
+  .profile-pick .name {
+    font-size: 13px;
+    color: var(--fg-1);
+    flex: 1;
+  }
+  .active-tag {
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid rgba(224, 181, 104, 0.4);
+    color: var(--accent);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .profile-actions {
+    display: flex;
+    gap: 2px;
+  }
+  .icon-btn {
+    all: unset;
+    width: 24px;
+    height: 24px;
+    display: grid;
+    place-items: center;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--fg-3);
+  }
+  .icon-btn:hover {
+    background: var(--bg-2);
+    color: var(--fg-1);
+  }
+  .icon-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+</style>

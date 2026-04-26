@@ -1,0 +1,39 @@
+[package]
+name = "d2r-run-counter"
+version = "0.1.0"
+description = "Diablo 2 Resurrected run counter"
+authors = ["you"]
+edition = "2021"
+rust-version = "1.78"
+
+[lib]
+name = "app_lib"
+# Single rlib instead of Tauri's default ["staticlib", "cdylib", "rlib"]:
+# MinGW's ld hits its 64K DLL-export limit when linking webview2 + windows-rs
+# into a cdylib. The exe links fine from a plain rlib. Switch back to the
+# default trio if you migrate to the MSVC toolchain.
+crate-type = ["lib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-store = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_System_Threading",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
