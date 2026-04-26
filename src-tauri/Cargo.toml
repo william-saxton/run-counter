@@ -1,7 +1,7 @@
 [package]
-name = "d2r-run-counter"
+name = "run-counter"
 version = "0.1.0"
-description = "Diablo 2 Resurrected run counter"
+description = "Lightweight run timer and counter"
 authors = ["you"]
 edition = "2021"
 rust-version = "1.78"

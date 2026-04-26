@@ -1,6 +1,6 @@
 //! Polls the OS foreground window once per ~500ms and emits a `game:focus`
 //! event whenever the focused process matches/stops matching the configured
-//! game executable name (default "D2R.exe").
+//! game executable name. Empty string disables matching.
 //!
 //! Windows-only. Other platforms are stubbed to no-op.
 
@@ -24,7 +24,7 @@ impl FocusWatcherState {
     pub fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(FocusInner {
-                game_process: "d2r.exe".to_string(),
+                game_process: String::new(),
                 last_focused: None,
             })),
         }
@@ -46,19 +46,24 @@ impl FocusWatcherState {
 pub fn start(app: AppHandle, state: FocusWatcherState) {
     std::thread::spawn(move || loop {
         let process_name = state.inner.lock().unwrap().game_process.clone();
-        let focused = foreground_process_name()
-            .ok()
-            .map(|n| n.eq_ignore_ascii_case(&process_name))
-            .unwrap_or(false);
+        // No process configured → don't emit focus events at all. Frontend
+        // would otherwise see a permanent "unfocused" state once the user
+        // enabled auto-pause, even though they hadn't picked a target.
+        if !process_name.is_empty() {
+            let focused = foreground_process_name()
+                .ok()
+                .map(|n| n.eq_ignore_ascii_case(&process_name))
+                .unwrap_or(false);
 
-        let mut s = state.inner.lock().unwrap();
-        if s.last_focused != Some(focused) {
-            s.last_focused = Some(focused);
-            drop(s);
-            // Emit per-webview-window. Broadcasting via app.emit() doesn't
-            // reach frontend listeners reliably in this Tauri 2 setup.
-            for (_label, window) in app.webview_windows() {
-                let _ = window.emit("game:focus", focused);
+            let mut s = state.inner.lock().unwrap();
+            if s.last_focused != Some(focused) {
+                s.last_focused = Some(focused);
+                drop(s);
+                // Emit per-webview-window. Broadcasting via app.emit() doesn't
+                // reach frontend listeners reliably in this Tauri 2 setup.
+                for (_label, window) in app.webview_windows() {
+                    let _ = window.emit("game:focus", focused);
+                }
             }
         }
         std::thread::sleep(Duration::from_millis(500));

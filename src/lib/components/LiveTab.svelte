@@ -28,7 +28,7 @@
   $: totalRuns = $session.session ? $session.session.runs.length : 0;
   $: completedCount = $completedRuns.length;
   $: totalCompletedMs = completedDur.reduce((a, b) => a + b, 0);
-  $: activeLabel = $activeRun?.label ?? $session.session?.default_label ?? "Mephisto";
+  $: activeLabel = $activeRun?.label ?? $session.session?.default_label ?? "Run";
 
   $: recent = ($session.session?.runs ?? []).slice().reverse();
 

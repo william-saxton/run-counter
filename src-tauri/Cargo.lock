@@ -472,7 +472,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "d2r-run-counter"
+name = "run-counter"
 version = "0.1.0"
 dependencies = [
  "serde",

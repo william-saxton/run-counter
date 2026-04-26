@@ -236,20 +236,14 @@ export const session = {
     nextDropId = 0;
     const runs: Run[] = [];
     let t = sid;
-    const dropPool = [
-      "Stone of Jordan",
-      "Tal Rasha's Adjudication",
-      "Skullder's Ire",
-      "Shaftstop",
-      "String of Ears",
-      "Vipermagi",
-    ];
+    const dropPool = ["Sample drop A", "Sample drop B", "Sample drop C"];
+    const demoLabel = "Run";
     for (let i = 1; i <= 22; i++) {
       const dur = 75_000 + Math.floor(Math.random() * 60_000);
       const r: Run = {
         id: ++nextRunId,
         session_id: sid,
-        label: "Mephisto",
+        label: demoLabel,
         started_at: t,
         ended_at: t + dur,
         paused_ms: 0,
@@ -267,13 +261,13 @@ export const session = {
       runs.push(r);
       t += dur + 2_000;
     }
-    runs.push(makeRun(sid, "Mephisto", t));
+    runs.push(makeRun(sid, demoLabel, t));
     _state.set({
       session: {
         id: sid,
         started_at: sid,
         ended_at: null,
-        default_label: "Mephisto",
+        default_label: demoLabel,
         runs,
       },
       now: Date.now(),

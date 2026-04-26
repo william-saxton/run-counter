@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "D2R Run Counter",
+  "productName": "Run Counter",
   "version": "0.1.0",
-  "identifier": "com.d2rrc.app",
+  "identifier": "com.runcounter",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "D2R Run Counter",
+        "title": "Run Counter",
         "width": 900,
         "height": 600,
         "minWidth": 800,
@@ -23,7 +23,7 @@
       },
       {
         "label": "overlay",
-        "title": "D2R Overlay",
+        "title": "Run Counter Overlay",
         "width": 320,
         "height": 96,
         "minWidth": 220,

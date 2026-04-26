@@ -74,7 +74,7 @@ async function store(): Promise<any> {
   if (!isTauri()) throw new Error("store not available");
   if (!storePromise) {
     const mod = await import("@tauri-apps/plugin-store");
-    storePromise = mod.load("d2r-rc.json", { autoSave: true, defaults: {} });
+    storePromise = mod.load("run-counter.json", { autoSave: true, defaults: {} });
   }
   return storePromise;
 }

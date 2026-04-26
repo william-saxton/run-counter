@@ -205,7 +205,7 @@
 
 <div class="app">
   <WindowChrome
-    title="D2R Run Counter"
+    title="Run Counter"
     subtitle={hasSession ? "— " + sessionTitle : undefined}
     chromeless={isTauri()}
   >

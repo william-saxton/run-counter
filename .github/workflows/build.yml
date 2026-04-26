@@ -66,14 +66,14 @@ jobs:
         run: |
           mkdir -p artifacts
           if [ "${{ matrix.platform }}" = "windows-latest" ]; then
-            cp src-tauri/target/release/d2r-run-counter.exe artifacts/
+            cp src-tauri/target/release/run-counter.exe artifacts/
           else
-            cp src-tauri/target/release/d2r-run-counter artifacts/
+            cp src-tauri/target/release/run-counter artifacts/
           fi
 
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: d2r-run-counter-${{ matrix.platform }}
+          name: run-counter-${{ matrix.platform }}
           path: artifacts/*
           if-no-files-found: error

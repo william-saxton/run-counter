@@ -1,5 +1,5 @@
 import { writable } from "svelte/store";
-import { DEFAULT_HOTKEYS, DEFAULT_LABELS, type Profile, type Settings } from "../types";
+import { DEFAULT_HOTKEYS, type Profile, type Settings } from "../types";
 
 function defaultProfile(): Profile {
   return {
@@ -13,19 +13,19 @@ const initial: Settings = (() => {
   const profile = defaultProfile();
   return {
     hotkeys: { ...DEFAULT_HOTKEYS },
-    saved_labels: [...DEFAULT_LABELS],
+    saved_labels: [],
     overlay_opacity: 92,
     overlay_lock: true,
     overlay_always_on_top: true,
     resume_on_launch: true,
     auto_pause_on_focus_loss: false,
-    game_process_name: "D2R.exe",
+    game_process_name: "",
     profiles: [profile],
     active_profile_id: profile.id,
   };
 })();
 
-const STORAGE_KEY = "d2r-rc-settings";
+const STORAGE_KEY = "run-counter-settings";
 
 function load(): Settings {
   try {
