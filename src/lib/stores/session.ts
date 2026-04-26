@@ -143,6 +143,26 @@ export const session = {
     await commit();
   },
 
+  /** Reset the current run's elapsed time to zero. Keeps label and drops. */
+  async resetCurrentRun() {
+    const t = Date.now();
+    _state.update((s) => {
+      if (!s.session) return s;
+      const runs = s.session.runs.slice();
+      const last = runs[runs.length - 1];
+      if (!last || last.status === "completed") return s;
+      runs[runs.length - 1] = {
+        ...last,
+        started_at: t,
+        ended_at: null,
+        paused_ms: 0,
+        status: "active",
+      };
+      return { ...s, session: { ...s.session, runs } };
+    });
+    await commit();
+  },
+
   async togglePause() {
     const t = Date.now();
     _state.update((s) => {

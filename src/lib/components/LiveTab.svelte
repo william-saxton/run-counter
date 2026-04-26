@@ -40,6 +40,13 @@
   function onPick(label: string) {
     sessionApi.setActiveLabel(label);
   }
+
+  function onResetRun() {
+    if (!$activeRun || $activeRun.status === "completed") return;
+    if (confirm("Reset the current run's timer to 00:00? Logged drops are kept.")) {
+      sessionApi.resetCurrentRun();
+    }
+  }
 </script>
 
 <div class="grid">
@@ -72,6 +79,7 @@
           <Btn icon={isRunning ? "pause" : "play"} on:click={() => sessionApi.togglePause()}>
             {isRunning ? "Pause" : "Resume"}
           </Btn>
+          <Btn icon="reset" on:click={onResetRun}>Reset</Btn>
         </div>
       </div>
 
