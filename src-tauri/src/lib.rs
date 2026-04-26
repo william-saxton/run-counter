@@ -92,12 +92,12 @@ pub fn run() {
                     let state = app.state::<AppState>();
                     let bindings = state.hotkeys.lock().unwrap().clone();
                     if let Some(name) = match_event_name(shortcut, &bindings) {
-                        // Emit per-webview-window. Broadcasting via app.emit()
-                        // doesn't reach frontend listeners reliably in this
-                        // Tauri 2 setup.
-                        for (_label, window) in app.webview_windows() {
-                            let _ = window.emit(name, ());
-                        }
+                        // Target the main window explicitly. WebviewWindow::emit
+                        // broadcasts to ALL windows in Tauri 2, so iterating
+                        // every window would fire each frontend listener once
+                        // per window — and toggle_pause is non-idempotent, so
+                        // a second call would immediately undo the first.
+                        let _ = app.emit_to("main", name, ());
                     }
                 })
                 .build(),

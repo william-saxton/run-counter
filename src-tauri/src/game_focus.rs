@@ -11,8 +11,11 @@
 
 use std::sync::Arc;
 use std::sync::Mutex;
+#[cfg(windows)]
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::AppHandle;
+#[cfg(windows)]
+use tauri::Emitter;
 
 #[derive(Clone)]
 pub struct FocusWatcherState {
@@ -33,7 +36,9 @@ struct FocusInner {
 /// the game must remain unfocused for ~750ms-1s before we report it. This
 /// filters brief blips (taskbar/notification popovers, alt-tab handoffs)
 /// while still feeling responsive when the user genuinely alt-tabs away.
+#[cfg(windows)]
 const POLL_INTERVAL: Duration = Duration::from_millis(250);
+#[cfg(windows)]
 const UNFOCUSED_DEBOUNCE_POLLS: u32 = 4;
 
 impl FocusWatcherState {
@@ -104,11 +109,10 @@ pub fn start(app: AppHandle, state: FocusWatcherState) {
 
 #[cfg(windows)]
 fn emit_focus(app: &AppHandle, focused: bool) {
-    // Emit per-webview-window. Broadcasting via app.emit() doesn't reach
-    // frontend listeners reliably in this Tauri 2 setup.
-    for (_label, window) in app.webview_windows() {
-        let _ = window.emit("game:focus", focused);
-    }
+    // Target the main window explicitly. WebviewWindow::emit broadcasts to
+    // every window in Tauri 2, so the previous per-window loop fired each
+    // frontend listener N times where N is the number of webview windows.
+    let _ = app.emit_to("main", "game:focus", focused);
 }
 
 #[cfg(not(windows))]
