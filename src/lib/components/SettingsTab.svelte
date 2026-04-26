@@ -12,7 +12,7 @@
     renameProfile,
     setActiveProfile,
   } from "../stores/settings";
-  import type { HotkeyBindings, LabelList, Profile } from "../types";
+  import type { HotkeyBindings, LabelList, Profile, Session, Settings } from "../types";
   import { persistence } from "../api";
 
   type HKKey = keyof HotkeyBindings;
@@ -140,6 +140,138 @@
   function cancelImport() {
     pendingImport = null;
     importError = null;
+  }
+
+  /* ---------- Full data export / import ---------- */
+
+  // Bumped only on incompatible format changes.
+  const DATA_EXPORT_VERSION = 1;
+
+  interface ProfileExport {
+    profile: Profile;
+    active: Session | null;
+    history: Session[];
+  }
+  interface FullExport {
+    version: number;
+    exported_at: number;
+    settings: Settings;
+    profiles: ProfileExport[];
+  }
+
+  let dataInput: HTMLInputElement;
+  let dataImportError: string | null = null;
+  let dataImportBusy = false;
+
+  async function onExportAll() {
+    try {
+      const profiles: ProfileExport[] = [];
+      for (const p of $settings.profiles) {
+        const [active, history] = await Promise.all([
+          persistence.loadActive(p.id),
+          persistence.loadHistory(p.id),
+        ]);
+        profiles.push({ profile: p, active, history });
+      }
+      const payload: FullExport = {
+        version: DATA_EXPORT_VERSION,
+        exported_at: Date.now(),
+        settings: $settings,
+        profiles,
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const ts = new Date().toISOString().slice(0, 10);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `run-counter-export-${ts}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // Revoke after the click has been dispatched. Some browsers/webviews
+      // need the URL to still be valid for the actual download to start.
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      alert(`Export failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  function openDataImportPicker() {
+    dataImportError = null;
+    dataInput?.click();
+  }
+
+  async function onImportDataFile(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+    dataImportBusy = true;
+    dataImportError = null;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const payload = validateFullExport(parsed);
+      const ok = confirm(
+        `Replace ALL current data with the contents of this file?\n\n` +
+          `${payload.profiles.length} profile(s), ${countSessions(payload)} session(s).\n\n` +
+          `This overwrites your settings, profiles, and run history. The app will reload.`
+      );
+      if (!ok) {
+        dataImportBusy = false;
+        return;
+      }
+      await applyFullImport(payload);
+      // Hard reload so every store re-hydrates from the new data and the
+      // session/overlay windows resync. Same approach as Clear history.
+      location.reload();
+    } catch (err) {
+      dataImportError = err instanceof Error ? err.message : String(err);
+      dataImportBusy = false;
+    }
+  }
+
+  function countSessions(p: FullExport): number {
+    let n = 0;
+    for (const pe of p.profiles) {
+      if (pe.active) n++;
+      n += pe.history.length;
+    }
+    return n;
+  }
+
+  function validateFullExport(raw: unknown): FullExport {
+    if (!raw || typeof raw !== "object") throw new Error("Not a JSON object");
+    const o = raw as Record<string, unknown>;
+    if (typeof o.version !== "number") throw new Error("Missing 'version' field");
+    if (o.version !== DATA_EXPORT_VERSION) {
+      throw new Error(
+        `Unsupported export version ${o.version} (expected ${DATA_EXPORT_VERSION})`
+      );
+    }
+    if (!o.settings || typeof o.settings !== "object") {
+      throw new Error("Missing 'settings'");
+    }
+    if (!Array.isArray(o.profiles)) {
+      throw new Error("Missing 'profiles' array");
+    }
+    // Light-touch validation — trust the rest of the shape since this is the
+    // app's own export format. A bad payload that slips through will fail
+    // loudly during applyFullImport.
+    return o as unknown as FullExport;
+  }
+
+  async function applyFullImport(payload: FullExport) {
+    // Wipe anything currently persisted so we don't leave orphan profile
+    // data behind from profiles that aren't in the import.
+    await persistence.clearAll();
+    for (const pe of payload.profiles) {
+      await persistence.saveActive(pe.active, pe.profile.id);
+      await persistence.saveHistory(pe.history, pe.profile.id);
+    }
+    settings.set(payload.settings);
   }
 
   function setOpacity(e: Event) {
@@ -394,10 +526,31 @@
       <div class="export-row">
         <div class="left">
           <span class="opt-label">Export all data</span>
-          <span class="opt-desc">Sessions, runs, drops as a single JSON file</span>
+          <span class="opt-desc">Settings, profiles, sessions, runs, and drops as a single JSON file</span>
         </div>
-        <Btn icon="download">Export</Btn>
+        <Btn icon="download" on:click={onExportAll}>Export</Btn>
       </div>
+      <div class="export-row">
+        <div class="left">
+          <span class="opt-label">Import data</span>
+          <span class="opt-desc">
+            Replace all current data with a previously-exported JSON file
+          </span>
+        </div>
+        <Btn icon="download" on:click={openDataImportPicker}>
+          {dataImportBusy ? "Importing…" : "Import…"}
+        </Btn>
+      </div>
+      <input
+        bind:this={dataInput}
+        type="file"
+        accept="application/json,.json"
+        class="hidden-file"
+        on:change={onImportDataFile}
+      />
+      {#if dataImportError}
+        <div class="import-error">Couldn't import: {dataImportError}</div>
+      {/if}
       <div class="toggle-row danger">
         <div class="left">
           <span class="opt-label danger">Clear history</span>
