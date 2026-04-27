@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Mutex;
+use std::time::Instant;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_global_shortcut::{Shortcut, ShortcutState};
 
@@ -7,6 +9,12 @@ mod game_focus;
 mod hotkeys;
 
 use game_focus::FocusWatcherState;
+
+/// Hotkey events arriving within this window of an identical previous one
+/// are suppressed. Windows delivers WM_HOTKEY on auto-repeat — a held F9
+/// key would otherwise fire the handler multiple times in rapid succession,
+/// and toggle_pause / next_run are non-idempotent.
+const HOTKEY_DEBOUNCE_MS: u128 = 250;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HotkeyBindings {
@@ -29,6 +37,7 @@ impl Default for HotkeyBindings {
 
 pub struct AppState {
     pub hotkeys: Mutex<HotkeyBindings>,
+    pub last_hotkey_fire: Mutex<HashMap<&'static str, Instant>>,
 }
 
 #[tauri::command]
@@ -76,6 +85,7 @@ fn toggle_overlay(app: AppHandle) -> Result<(), String> {
 pub fn run() {
     let app_state = AppState {
         hotkeys: Mutex::new(HotkeyBindings::default()),
+        last_hotkey_fire: Mutex::new(HashMap::new()),
     };
     let focus_state = FocusWatcherState::new();
 
@@ -92,11 +102,24 @@ pub fn run() {
                     let state = app.state::<AppState>();
                     let bindings = state.hotkeys.lock().unwrap().clone();
                     if let Some(name) = match_event_name(shortcut, &bindings) {
+                        // Suppress rapid repeats from the same hotkey. The
+                        // OS delivers WM_HOTKEY on auto-repeat for a held
+                        // key, which would otherwise produce two next_run
+                        // entries (or pause/unpause) per perceived press.
+                        let now = Instant::now();
+                        let mut last_fire = state.last_hotkey_fire.lock().unwrap();
+                        if let Some(prev) = last_fire.get(name) {
+                            if now.duration_since(*prev).as_millis() < HOTKEY_DEBOUNCE_MS {
+                                return;
+                            }
+                        }
+                        last_fire.insert(name, now);
+                        drop(last_fire);
+
                         // Target the main window explicitly. WebviewWindow::emit
                         // broadcasts to ALL windows in Tauri 2, so iterating
                         // every window would fire each frontend listener once
-                        // per window — and toggle_pause is non-idempotent, so
-                        // a second call would immediately undo the first.
+                        // per window.
                         let _ = app.emit_to("main", name, ());
                     }
                 })
