@@ -13,6 +13,7 @@
     "core:event:default",
     "core:webview:default",
     "global-shortcut:default",
-    "store:default"
+    "store:default",
+    "window-state:default"
   ]
 }

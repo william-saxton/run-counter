@@ -93,6 +93,7 @@ pub fn run() {
         .manage(app_state)
         .manage(focus_state.clone())
         .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
