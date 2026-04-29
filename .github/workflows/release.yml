@@ -106,14 +106,44 @@ jobs:
       - name: Resolve release tag
         id: resolve_tag
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.tag_name }}" ]; then
             tag="${{ inputs.tag_name }}"
           elif [ "${{ github.event_name }}" = "pull_request" ]; then
             tag="pr-${{ github.event.pull_request.number }}-$(echo ${{ github.sha }} | cut -c1-7)"
           else
-            pkg_version=$(node -p "require('./package.json').version")
-            tag="v${pkg_version}-$(echo ${{ github.sha }} | cut -c1-7)"
+            # Auto-bump scheme: v{MAJOR}.{MINOR}.
+            #   MAJOR comes from package.json's version field. Bump the file
+            #   to start a new major line.
+            #   MINOR auto-increments past the highest existing v{MAJOR}.{N}
+            #   release tag. The MINOR in package.json acts as a floor — set
+            #   it higher than the latest release if you want to skip ahead.
+            file_version=$(node -p "require('./package.json').version")
+            major=$(echo "$file_version" | cut -d. -f1)
+            file_minor=$(echo "$file_version" | cut -d. -f2)
+            file_minor=${file_minor:-0}
+
+            existing=$(gh release list --limit 1000 --json tagName --jq '.[].tagName' \
+              | grep -E "^v${major}\.[0-9]+$" || true)
+            latest_minor=$(echo "$existing" \
+              | sed -E "s/^v${major}\.([0-9]+)$/\1/" \
+              | sort -n \
+              | tail -1)
+
+            if [ -z "$latest_minor" ]; then
+              next_minor=$file_minor
+            else
+              candidate=$((latest_minor + 1))
+              if [ "$candidate" -lt "$file_minor" ]; then
+                next_minor=$file_minor
+              else
+                next_minor=$candidate
+              fi
+            fi
+            tag="v${major}.${next_minor}"
+            echo "Auto-bump → major=${major}, file_minor=${file_minor}, latest_minor=${latest_minor:-none}, next=${next_minor}"
           fi
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
 
