@@ -60,13 +60,9 @@ export const DEFAULT_HOTKEYS: HotkeyBindings = {
   toggle_overlay: "Ctrl+F12",
 };
 
-export const DEFAULT_LABELS = [
-  "Mephisto",
-  "Pindle",
-  "Baal",
-  "Andariel",
-  "Diablo",
-  "Cows",
-  "Countess",
-  "Trav",
-];
+/** Importable label list — what users save to share their run targets. */
+export interface LabelList {
+  name: string;
+  description?: string;
+  labels: string[];
+}

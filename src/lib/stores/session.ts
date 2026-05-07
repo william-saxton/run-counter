@@ -60,6 +60,11 @@ function makeRun(sessionId: number, label: string | null, startedAt = Date.now()
 
 let isOwner = true; // main window writes; overlay reads
 let suppressBroadcast = false;
+// True iff the active run's current paused state was set by the auto-pause
+// system (focus watcher) rather than by an explicit user action. Reset by any
+// user-initiated state change so a stale flag from a prior cycle can never
+// cause the next refocus to silently resume a manually-paused run.
+let lastPausedByAuto = false;
 
 /** Persist active session and notify other windows. */
 async function commit(): Promise<void> {
@@ -82,6 +87,7 @@ export const session = {
     const sid = startedAt;
     nextRunId = 0;
     nextDropId = 0;
+    lastPausedByAuto = false;
     const sess: Session = {
       id: sid,
       started_at: startedAt,
@@ -124,6 +130,7 @@ export const session = {
 
   async nextRun(label?: string | null) {
     const t = Date.now();
+    lastPausedByAuto = false;
     _state.update((s) => {
       if (!s.session) return s;
       const runs = s.session.runs.map((r, i, arr) => {
@@ -143,8 +150,33 @@ export const session = {
     await commit();
   },
 
+  /** Reset the current run's elapsed time to zero. Keeps label and drops. */
+  async resetCurrentRun() {
+    const t = Date.now();
+    lastPausedByAuto = false;
+    _state.update((s) => {
+      if (!s.session) return s;
+      const runs = s.session.runs.slice();
+      const last = runs[runs.length - 1];
+      if (!last || last.status === "completed") return s;
+      runs[runs.length - 1] = {
+        ...last,
+        started_at: t,
+        ended_at: null,
+        paused_ms: 0,
+        status: "active",
+      };
+      return { ...s, session: { ...s.session, runs } };
+    });
+    await commit();
+  },
+
   async togglePause() {
     const t = Date.now();
+    // Any user-initiated toggle takes ownership of the pause state, so a
+    // later refocus event won't unexpectedly auto-resume what the user paused
+    // (or auto-pause what the user just resumed).
+    lastPausedByAuto = false;
     _state.update((s) => {
       if (!s.session) return s;
       const runs = s.session.runs.slice();
@@ -164,6 +196,52 @@ export const session = {
       return { ...s, session: { ...s.session, runs } };
     });
     await commit();
+  },
+
+  /** Pause the active run if it's running. Marks the pause as auto-owned so
+   *  autoResume() can later undo it. No-op if the run is already paused or
+   *  completed — never re-pauses a manually-paused run. */
+  async autoPause() {
+    const t = Date.now();
+    let didPause = false;
+    _state.update((s) => {
+      if (!s.session) return s;
+      const runs = s.session.runs.slice();
+      const last = runs[runs.length - 1];
+      if (!last || last.status !== "active") return s;
+      runs[runs.length - 1] = { ...last, status: "paused", ended_at: t };
+      didPause = true;
+      return { ...s, session: { ...s.session, runs } };
+    });
+    if (didPause) {
+      lastPausedByAuto = true;
+      await commit();
+    }
+  },
+
+  /** Resume the active run only if it was paused by the auto-pause system.
+   *  Manually-paused runs are left alone. */
+  async autoResume() {
+    if (!lastPausedByAuto) return;
+    const t = Date.now();
+    let didResume = false;
+    _state.update((s) => {
+      if (!s.session) return s;
+      const runs = s.session.runs.slice();
+      const last = runs[runs.length - 1];
+      if (!last || last.status !== "paused") return s;
+      const pausedFor = t - (last.ended_at ?? t);
+      runs[runs.length - 1] = {
+        ...last,
+        status: "active",
+        ended_at: null,
+        paused_ms: last.paused_ms + Math.max(0, pausedFor),
+      };
+      didResume = true;
+      return { ...s, session: { ...s.session, runs } };
+    });
+    lastPausedByAuto = false;
+    if (didResume) await commit();
   },
 
   async setActiveLabel(label: string) {
@@ -236,20 +314,14 @@ export const session = {
     nextDropId = 0;
     const runs: Run[] = [];
     let t = sid;
-    const dropPool = [
-      "Stone of Jordan",
-      "Tal Rasha's Adjudication",
-      "Skullder's Ire",
-      "Shaftstop",
-      "String of Ears",
-      "Vipermagi",
-    ];
+    const dropPool = ["Sample drop A", "Sample drop B", "Sample drop C"];
+    const demoLabel = "Run";
     for (let i = 1; i <= 22; i++) {
       const dur = 75_000 + Math.floor(Math.random() * 60_000);
       const r: Run = {
         id: ++nextRunId,
         session_id: sid,
-        label: "Mephisto",
+        label: demoLabel,
         started_at: t,
         ended_at: t + dur,
         paused_ms: 0,
@@ -267,13 +339,13 @@ export const session = {
       runs.push(r);
       t += dur + 2_000;
     }
-    runs.push(makeRun(sid, "Mephisto", t));
+    runs.push(makeRun(sid, demoLabel, t));
     _state.set({
       session: {
         id: sid,
         started_at: sid,
         ended_at: null,
-        default_label: "Mephisto",
+        default_label: demoLabel,
         runs,
       },
       now: Date.now(),

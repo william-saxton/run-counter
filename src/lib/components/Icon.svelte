@@ -74,5 +74,7 @@
     </g>
   {:else if name === "sparkle"}
     <g><path d="M9 2l1.5 4.5L15 8l-4.5 1.5L9 14l-1.5-4.5L3 8l4.5-1.5L9 2z" fill={stroke} stroke="none" /></g>
+  {:else if name === "reset"}
+    <g><path d="M3 9a6 6 0 1 0 1.7-4.2" /><path d="M3 3v4h4" /></g>
   {/if}
 </svg>

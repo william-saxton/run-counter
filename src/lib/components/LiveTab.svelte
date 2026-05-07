@@ -28,7 +28,7 @@
   $: totalRuns = $session.session ? $session.session.runs.length : 0;
   $: completedCount = $completedRuns.length;
   $: totalCompletedMs = completedDur.reduce((a, b) => a + b, 0);
-  $: activeLabel = $activeRun?.label ?? $session.session?.default_label ?? "Mephisto";
+  $: activeLabel = $activeRun?.label ?? $session.session?.default_label ?? "Run";
 
   $: recent = ($session.session?.runs ?? []).slice().reverse();
 
@@ -39,6 +39,13 @@
 
   function onPick(label: string) {
     sessionApi.setActiveLabel(label);
+  }
+
+  function onResetRun() {
+    if (!$activeRun || $activeRun.status === "completed") return;
+    if (confirm("Reset the current run's timer to 00:00? Logged drops are kept.")) {
+      sessionApi.resetCurrentRun();
+    }
   }
 </script>
 
@@ -72,6 +79,7 @@
           <Btn icon={isRunning ? "pause" : "play"} on:click={() => sessionApi.togglePause()}>
             {isRunning ? "Pause" : "Resume"}
           </Btn>
+          <Btn icon="reset" on:click={onResetRun}>Reset</Btn>
         </div>
       </div>
 
