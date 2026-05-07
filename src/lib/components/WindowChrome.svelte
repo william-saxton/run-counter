@@ -20,7 +20,7 @@
         {/if}
       </div>
       <div class="spacer" />
-      <span class="brand">D2R · Run Counter</span>
+      <span class="brand">Run Counter</span>
     </div>
   {/if}
   <div class="body">

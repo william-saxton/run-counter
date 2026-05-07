@@ -1,13 +1,21 @@
-//! Polls the OS foreground window once per ~500ms and emits a `game:focus`
+//! Polls the OS foreground window every ~250ms and emits a `game:focus`
 //! event whenever the focused process matches/stops matching the configured
-//! game executable name (default "D2R.exe").
+//! game executable name. Empty string disables matching.
+//!
+//! Refocus is reported immediately. Unfocus is debounced — we require several
+//! consecutive observations before believing it, so transient blips
+//! (notification toasts, tooltip popups, momentary NULL foreground during
+//! window-manager handoffs) don't cause spurious auto-pause cycles.
 //!
 //! Windows-only. Other platforms are stubbed to no-op.
 
 use std::sync::Arc;
 use std::sync::Mutex;
+#[cfg(windows)]
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::AppHandle;
+#[cfg(windows)]
+use tauri::Emitter;
 
 #[derive(Clone)]
 pub struct FocusWatcherState {
@@ -18,14 +26,28 @@ struct FocusInner {
     /// Lower-cased process name(s) we treat as "the game". User can change.
     game_process: String,
     last_focused: Option<bool>,
+    /// Consecutive observations of "not the game in foreground". The
+    /// emitted state only flips to unfocused once this hits the debounce
+    /// threshold. Reset by any "focused" or unreadable observation.
+    unfocused_streak: u32,
 }
+
+/// Poll cadence and debounce. With 250ms polling and a 4-poll threshold,
+/// the game must remain unfocused for ~750ms-1s before we report it. This
+/// filters brief blips (taskbar/notification popovers, alt-tab handoffs)
+/// while still feeling responsive when the user genuinely alt-tabs away.
+#[cfg(windows)]
+const POLL_INTERVAL: Duration = Duration::from_millis(250);
+#[cfg(windows)]
+const UNFOCUSED_DEBOUNCE_POLLS: u32 = 4;
 
 impl FocusWatcherState {
     pub fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(FocusInner {
-                game_process: "d2r.exe".to_string(),
+                game_process: String::new(),
                 last_focused: None,
+                unfocused_streak: 0,
             })),
         }
     }
@@ -33,8 +55,9 @@ impl FocusWatcherState {
     pub fn set_process(&self, name: &str) {
         let mut s = self.inner.lock().unwrap();
         s.game_process = name.trim().to_lowercase();
-        // Reset last_focused so the next tick re-emits with the new criterion.
+        // Reset all derived state so the next tick re-evaluates from scratch.
         s.last_focused = None;
+        s.unfocused_streak = 0;
     }
 
     pub fn current_process(&self) -> String {
@@ -46,23 +69,50 @@ impl FocusWatcherState {
 pub fn start(app: AppHandle, state: FocusWatcherState) {
     std::thread::spawn(move || loop {
         let process_name = state.inner.lock().unwrap().game_process.clone();
-        let focused = foreground_process_name()
-            .ok()
-            .map(|n| n.eq_ignore_ascii_case(&process_name))
-            .unwrap_or(false);
+        // No process configured → don't emit focus events at all. Frontend
+        // would otherwise see a permanent "unfocused" state once the user
+        // enabled auto-pause, even though they hadn't picked a target.
+        if !process_name.is_empty() {
+            // Some(true) = game is foreground, Some(false) = something else
+            // is foreground, None = couldn't read (transient NULL during
+            // window-manager handoffs, lock screen, etc.). Treat None as
+            // "no evidence either way" — preserve state and don't advance
+            // the unfocused streak.
+            let observed: Option<bool> = foreground_process_name()
+                .ok()
+                .map(|n| n.eq_ignore_ascii_case(&process_name));
 
-        let mut s = state.inner.lock().unwrap();
-        if s.last_focused != Some(focused) {
-            s.last_focused = Some(focused);
-            drop(s);
-            // Emit per-webview-window. Broadcasting via app.emit() doesn't
-            // reach frontend listeners reliably in this Tauri 2 setup.
-            for (_label, window) in app.webview_windows() {
-                let _ = window.emit("game:focus", focused);
+            if let Some(is_focused) = observed {
+                let mut s = state.inner.lock().unwrap();
+                if is_focused {
+                    s.unfocused_streak = 0;
+                    if s.last_focused != Some(true) {
+                        s.last_focused = Some(true);
+                        drop(s);
+                        emit_focus(&app, true);
+                    }
+                } else {
+                    s.unfocused_streak = s.unfocused_streak.saturating_add(1);
+                    if s.unfocused_streak >= UNFOCUSED_DEBOUNCE_POLLS
+                        && s.last_focused != Some(false)
+                    {
+                        s.last_focused = Some(false);
+                        drop(s);
+                        emit_focus(&app, false);
+                    }
+                }
             }
         }
-        std::thread::sleep(Duration::from_millis(500));
+        std::thread::sleep(POLL_INTERVAL);
     });
+}
+
+#[cfg(windows)]
+fn emit_focus(app: &AppHandle, focused: bool) {
+    // Target the main window explicitly. WebviewWindow::emit broadcasts to
+    // every window in Tauri 2, so the previous per-window loop fired each
+    // frontend listener N times where N is the number of webview windows.
+    let _ = app.emit_to("main", "game:focus", focused);
 }
 
 #[cfg(not(windows))]
